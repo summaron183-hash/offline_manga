@@ -1,0 +1,943 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1: Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // PRIMITIVE & RBAC HELPERS
+    // =========================================================================
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidEmailId(email) {
+      return email is string
+        && email.size() >= 5
+        && email.size() <= 254
+        && email.matches('^[a-z0-9._%+\\-]+@[a-z0-9.\\-]+\\.[a-z]{2,}$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrapAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'summaron183@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrapAdmin() || (
+        isVerifiedUser()
+        && request.auth.token.email is string
+        && exists(/databases/$(database)/documents/staff/$(request.auth.token.email))
+        && get(/databases/$(database)/documents/staff/$(request.auth.token.email)).data.role == 'admin'
+      );
+    }
+
+    function isModerator() {
+      return isVerifiedUser()
+        && request.auth.token.email is string
+        && exists(/databases/$(database)/documents/staff/$(request.auth.token.email))
+        && get(/databases/$(database)/documents/staff/$(request.auth.token.email)).data.role == 'moderator';
+    }
+
+    function isStaff() {
+      return isAdmin() || isModerator();
+    }
+
+    function isNotSanctioned() {
+      return isAdmin()
+        || !exists(/databases/$(database)/documents/userModeration/$(request.auth.uid))
+        || get(/databases/$(database)/documents/userModeration/$(request.auth.uid)).data.status in ['active', 'warned']
+        || (
+          get(/databases/$(database)/documents/userModeration/$(request.auth.uid)).data.isPermanent == false
+          && request.time > get(/databases/$(database)/documents/userModeration/$(request.auth.uid)).data.expiresAt
+        );
+    }
+
+    // =========================================================================
+    // ENTITY VALIDATION BLUEPRINTS (Pillar 2 & Pillar 5)
+    // =========================================================================
+    function isValidSeries(data) {
+      return data.keys().hasAll([
+        'id', 'visibility', 'title', 'altTitles', 'synopsis', 'author', 'artist',
+        'coverUrl', 'status', 'type', 'releaseYear', 'genres', 'views',
+        'ratingSum', 'ratingCount', 'ratingAvg', 'latestChapterNum',
+        'latestChapterTitle', 'chapterCount', 'isFeatured', 'createdBy',
+        'createdAt', 'updatedAt'
+      ]) && data.keys().hasOnly([
+        'id', 'visibility', 'title', 'altTitles', 'synopsis', 'author', 'artist',
+        'coverUrl', 'status', 'type', 'releaseYear', 'genres', 'views',
+        'ratingSum', 'ratingCount', 'ratingAvg', 'latestChapterNum',
+        'latestChapterTitle', 'chapterCount', 'isFeatured', 'createdBy',
+        'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.id)
+      && data.visibility is string && data.visibility.size() <= 16 && data.visibility == 'public'
+      && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+      && data.altTitles is list && data.altTitles.size() <= 10
+      && (data.altTitles.size() == 0 || (data.altTitles[0] is string && data.altTitles[0].size() <= 200))
+      && data.synopsis is string && data.synopsis.size() >= 1 && data.synopsis.size() <= 4000
+      && data.author is string && data.author.size() >= 1 && data.author.size() <= 120
+      && data.artist is string && data.artist.size() >= 1 && data.artist.size() <= 120
+      && data.coverUrl is string && data.coverUrl.size() >= 1 && data.coverUrl.size() <= 650000
+      && data.status is string && data.status.size() <= 20 && data.status in ['Ongoing', 'Completed']
+      && data.type is string && data.type.size() <= 20 && data.type in ['Manga', 'Manhwa', 'Manhua']
+      && data.releaseYear is int && data.releaseYear >= 1950 && data.releaseYear <= 2100
+      && data.genres is list && data.genres.size() >= 1 && data.genres.size() <= 10
+      && data.genres[0] is string && data.genres[0].size() >= 1 && data.genres[0].size() <= 40
+      && data.views is int && data.views >= 0
+      && data.ratingSum is number && data.ratingSum >= 0
+      && data.ratingCount is int && data.ratingCount >= 0
+      && data.ratingAvg is number && data.ratingAvg >= 0 && data.ratingAvg <= 5
+      && data.latestChapterNum is number && data.latestChapterNum >= 0
+      && data.latestChapterTitle is string && data.latestChapterTitle.size() <= 200
+      && data.chapterCount is int && data.chapterCount >= 0
+      && data.isFeatured is bool
+      && isValidId(data.createdBy)
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidChapter(data) {
+      return data.keys().hasAll([
+        'id', 'seriesId', 'visibility', 'chapterNumber', 'title',
+        'pageCount', 'createdBy', 'createdAt', 'updatedAt'
+      ]) && data.keys().hasOnly([
+        'id', 'seriesId', 'visibility', 'chapterNumber', 'title',
+        'pageCount', 'createdBy', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.seriesId)
+      && data.visibility is string && data.visibility.size() <= 16 && data.visibility == 'public'
+      && data.chapterNumber is number && data.chapterNumber >= 0 && data.chapterNumber <= 100000
+      && data.title is string && data.title.size() <= 200
+      && data.pageCount is int && data.pageCount >= 1 && data.pageCount <= 500
+      && isValidId(data.createdBy)
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidChapterPage(data) {
+      return data.keys().hasAll([
+        'id', 'seriesId', 'chapterId', 'visibility', 'pageNumber',
+        'imageUrl', 'createdBy', 'createdAt'
+      ]) && data.keys().hasOnly([
+        'id', 'seriesId', 'chapterId', 'visibility', 'pageNumber',
+        'imageUrl', 'createdBy', 'createdAt'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.seriesId)
+      && isValidId(data.chapterId)
+      && data.visibility is string && data.visibility.size() <= 16 && data.visibility == 'public'
+      && data.pageNumber is int && data.pageNumber >= 1 && data.pageNumber <= 500
+      && data.imageUrl is string && data.imageUrl.size() >= 1 && data.imageUrl.size() <= 800000
+      && isValidId(data.createdBy)
+      && data.createdAt is timestamp;
+    }
+
+    function isValidSeriesRating(data) {
+      return data.keys().hasAll([
+        'userId', 'seriesId', 'visibility', 'score', 'createdAt', 'updatedAt'
+      ]) && data.keys().hasOnly([
+        'userId', 'seriesId', 'visibility', 'score', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.userId)
+      && data.userId == request.auth.uid
+      && isValidId(data.seriesId)
+      && data.visibility is string && data.visibility.size() <= 16 && data.visibility == 'public'
+      && data.score is int && data.score >= 1 && data.score <= 5
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidSeriesSubscriber(data) {
+      return data.keys().hasAll(['userId', 'seriesId', 'createdAt'])
+      && data.keys().hasOnly(['userId', 'seriesId', 'createdAt'])
+      && isValidId(data.userId)
+      && data.userId == request.auth.uid
+      && isValidId(data.seriesId)
+      && data.createdAt is timestamp;
+    }
+
+    function isValidComment(data) {
+      return data.keys().hasAll([
+        'id', 'visibility', 'seriesId', 'seriesTitle', 'chapterId', 'parentId',
+        'replyToName', 'authorId', 'authorName', 'authorPhoto', 'content',
+        'imageUrl', 'isEdited', 'likesCount', 'createdAt', 'updatedAt'
+      ]) && data.keys().hasOnly([
+        'id', 'visibility', 'seriesId', 'seriesTitle', 'chapterId', 'parentId',
+        'replyToName', 'authorId', 'authorName', 'authorPhoto', 'content',
+        'imageUrl', 'isEdited', 'likesCount', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.id)
+      && data.visibility is string && data.visibility.size() <= 16 && data.visibility == 'public'
+      && isValidId(data.seriesId)
+      && data.seriesTitle is string && data.seriesTitle.size() >= 1 && data.seriesTitle.size() <= 200
+      && data.chapterId is string && data.chapterId.size() <= 128
+      && data.parentId is string && data.parentId.size() <= 128
+      && data.replyToName is string && data.replyToName.size() <= 80
+      && isValidId(data.authorId)
+      && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 80
+      && data.authorPhoto is string && data.authorPhoto.size() <= 650000
+      && data.content is string && data.content.size() <= 2000
+      && data.imageUrl is string && data.imageUrl.size() <= 650000
+      && (data.content.size() >= 1 || data.imageUrl.size() >= 1)
+      && data.isEdited is bool
+      && data.likesCount is int && data.likesCount >= 0
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidCommentLike(data) {
+      return data.keys().hasAll(['userId', 'commentId', 'createdAt'])
+      && data.keys().hasOnly(['userId', 'commentId', 'createdAt'])
+      && isValidId(data.userId)
+      && data.userId == request.auth.uid
+      && isValidId(data.commentId)
+      && data.createdAt is timestamp;
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+        'uid', 'visibility', 'displayName', 'username', 'photoURL', 'bannerUrl',
+        'bio', 'pronouns', 'location', 'favoriteGenres', 'readingModePref',
+        'chapterAlertsEnabled', 'showReadingStatsPublic', 'createdAt', 'updatedAt'
+      ]) && data.keys().hasOnly([
+        'uid', 'visibility', 'displayName', 'username', 'photoURL', 'bannerUrl',
+        'bio', 'pronouns', 'location', 'favoriteGenres', 'readingModePref',
+        'chapterAlertsEnabled', 'showReadingStatsPublic', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.uid)
+      && data.uid == request.auth.uid
+      && data.visibility is string && data.visibility.size() <= 16 && data.visibility == 'public'
+      && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+      && data.username is string && data.username.size() <= 40
+      && data.photoURL is string && data.photoURL.size() <= 650000
+      && data.bannerUrl is string && data.bannerUrl.size() <= 650000
+      && data.bio is string && data.bio.size() <= 600
+      && data.pronouns is string && data.pronouns.size() <= 40
+      && data.location is string && data.location.size() <= 80
+      && data.favoriteGenres is list && data.favoriteGenres.size() <= 8
+      && (data.favoriteGenres.size() == 0 || (data.favoriteGenres[0] is string && data.favoriteGenres[0].size() <= 40))
+      && data.readingModePref is string && data.readingModePref.size() <= 16 && data.readingModePref in ['webtoon', 'single']
+      && data.chapterAlertsEnabled is bool
+      && data.showReadingStatsPublic is bool
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivate(data) {
+      return data.keys().hasAll(['uid', 'email', 'updatedAt'])
+      && data.keys().hasOnly(['uid', 'email', 'updatedAt'])
+      && isValidId(data.uid)
+      && data.uid == request.auth.uid
+      && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidBookmark(data) {
+      return data.keys().hasAll([
+        'userId', 'seriesId', 'seriesTitle', 'coverUrl',
+        'latestChapterNum', 'type', 'createdAt'
+      ]) && data.keys().hasOnly([
+        'userId', 'seriesId', 'seriesTitle', 'coverUrl',
+        'latestChapterNum', 'type', 'createdAt'
+      ])
+      && isValidId(data.userId)
+      && data.userId == request.auth.uid
+      && isValidId(data.seriesId)
+      && data.seriesTitle is string && data.seriesTitle.size() >= 1 && data.seriesTitle.size() <= 200
+      && data.coverUrl is string && data.coverUrl.size() >= 1 && data.coverUrl.size() <= 650000
+      && data.latestChapterNum is number && data.latestChapterNum >= 0
+      && data.type is string && data.type.size() <= 20 && data.type in ['Manga', 'Manhwa', 'Manhua']
+      && data.createdAt is timestamp;
+    }
+
+    function isValidReadingHistory(data) {
+      return data.keys().hasAll([
+        'userId', 'seriesId', 'seriesTitle', 'coverUrl',
+        'lastChapterId', 'lastChapterNum', 'lastChapterTitle',
+        'lastPageIndex', 'readChapterIds', 'updatedAt'
+      ]) && data.keys().hasOnly([
+        'userId', 'seriesId', 'seriesTitle', 'coverUrl',
+        'lastChapterId', 'lastChapterNum', 'lastChapterTitle',
+        'lastPageIndex', 'readChapterIds', 'updatedAt'
+      ])
+      && isValidId(data.userId)
+      && data.userId == request.auth.uid
+      && isValidId(data.seriesId)
+      && data.seriesTitle is string && data.seriesTitle.size() >= 1 && data.seriesTitle.size() <= 200
+      && data.coverUrl is string && data.coverUrl.size() >= 1 && data.coverUrl.size() <= 650000
+      && isValidId(data.lastChapterId)
+      && data.lastChapterNum is number && data.lastChapterNum >= 0
+      && data.lastChapterTitle is string && data.lastChapterTitle.size() <= 200
+      && data.lastPageIndex is int && data.lastPageIndex >= 0 && data.lastPageIndex <= 500
+      && data.readChapterIds is list && data.readChapterIds.size() <= 1000
+      && (data.readChapterIds.size() == 0 || (data.readChapterIds[0] is string && data.readChapterIds[0].size() <= 128))
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'seriesId', 'seriesTitle', 'chapterId',
+        'chapterNumber', 'message', 'isRead', 'senderId', 'createdAt', 'updatedAt'
+      ]) && data.keys().hasOnly([
+        'id', 'userId', 'seriesId', 'seriesTitle', 'chapterId',
+        'chapterNumber', 'message', 'isRead', 'senderId', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.userId)
+      && isValidId(data.seriesId)
+      && data.seriesTitle is string && data.seriesTitle.size() >= 1 && data.seriesTitle.size() <= 200
+      && isValidId(data.chapterId)
+      && data.chapterNumber is number && data.chapterNumber >= 0
+      && data.message is string && data.message.size() >= 1 && data.message.size() <= 300
+      && data.isRead is bool
+      && isValidId(data.senderId)
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidStaffMember(data) {
+      return data.keys().hasAll([
+        'email', 'role', 'addedBy', 'addedByEmail', 'createdAt', 'updatedAt'
+      ]) && data.keys().hasOnly([
+        'email', 'role', 'addedBy', 'addedByEmail', 'createdAt', 'updatedAt'
+      ])
+      && isValidEmailId(data.email)
+      && data.role is string && data.role.size() <= 20 && data.role in ['admin', 'moderator']
+      && isValidId(data.addedBy)
+      && data.addedBy == request.auth.uid
+      && data.addedByEmail is string && data.addedByEmail.size() >= 3 && data.addedByEmail.size() <= 254
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidStaffDirectory(data) {
+      return data.keys().hasAll(['id', 'entries', 'updatedBy', 'updatedAt'])
+      && data.keys().hasOnly(['id', 'entries', 'updatedBy', 'updatedAt'])
+      && data.id is string && data.id.size() <= 32 && data.id == 'staffDirectory'
+      && data.entries is list && data.entries.size() <= 100
+      && (data.entries.size() == 0 || (data.entries[0] is string && data.entries[0].size() <= 320))
+      && isValidId(data.updatedBy)
+      && data.updatedBy == request.auth.uid
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidSiteSettings(data) {
+      return data.keys().hasAll([
+        'id', 'visibility', 'siteName', 'siteTagline', 'logoUrl',
+        'announcementBanner', 'themePreset', 'bgCanvasHex', 'bgSurfaceHex',
+        'accentHex', 'textPrimaryHex', 'uiCopy', 'textReplacements',
+        'updatedBy', 'updatedAt'
+      ]) && data.keys().hasOnly([
+        'id', 'visibility', 'siteName', 'siteTagline', 'logoUrl',
+        'announcementBanner', 'themePreset', 'bgCanvasHex', 'bgSurfaceHex',
+        'accentHex', 'textPrimaryHex', 'uiCopy', 'textReplacements',
+        'updatedBy', 'updatedAt'
+      ])
+      && data.id is string && data.id.size() <= 32 && data.id == 'settings'
+      && data.visibility is string && data.visibility.size() <= 16 && data.visibility == 'public'
+      && data.siteName is string && data.siteName.size() >= 1 && data.siteName.size() <= 80
+      && data.siteTagline is string && data.siteTagline.size() <= 200
+      && data.logoUrl is string && data.logoUrl.size() <= 650000
+      && data.announcementBanner is string && data.announcementBanner.size() <= 300
+      && data.themePreset is string && data.themePreset.size() <= 40
+      && data.bgCanvasHex is string && data.bgCanvasHex.size() <= 16
+      && data.bgSurfaceHex is string && data.bgSurfaceHex.size() <= 16
+      && data.accentHex is string && data.accentHex.size() <= 16
+      && data.textPrimaryHex is string && data.textPrimaryHex.size() <= 16
+      && data.uiCopy is map && data.uiCopy.keys().size() <= 100
+      && data.textReplacements is list && data.textReplacements.size() <= 80
+      && (data.textReplacements.size() == 0 || (data.textReplacements[0] is string && data.textReplacements[0].size() <= 600))
+      && isValidId(data.updatedBy)
+      && data.updatedBy == request.auth.uid
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidUserModeration(data) {
+      return data.keys().hasAll([
+        'userId', 'visibility', 'status', 'reason', 'warningMessage',
+        'isPermanent', 'expiresAt', 'updatedBy', 'updatedAt'
+      ]) && data.keys().hasOnly([
+        'userId', 'visibility', 'status', 'reason', 'warningMessage',
+        'isPermanent', 'expiresAt', 'updatedBy', 'updatedAt'
+      ])
+      && isValidId(data.userId)
+      && data.visibility is string && data.visibility.size() <= 16 && data.visibility == 'public'
+      && data.status is string && data.status.size() <= 20
+      && data.status in ['active', 'warned', 'muted', 'suspended', 'banned']
+      && data.reason is string && data.reason.size() <= 500
+      && data.warningMessage is string && data.warningMessage.size() <= 500
+      && data.isPermanent is bool
+      && data.expiresAt is timestamp
+      && isValidId(data.updatedBy)
+      && data.updatedBy == request.auth.uid
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidContentReport(data) {
+      return data.keys().hasAll([
+        'id', 'scope', 'targetType', 'seriesId', 'seriesTitle', 'chapterId',
+        'chapterNumber', 'commentId', 'commentAuthorId', 'commentSnippet',
+        'reporterId', 'reporterName', 'reason', 'details', 'status',
+        'createdAt', 'updatedAt'
+      ]) && data.keys().hasOnly([
+        'id', 'scope', 'targetType', 'seriesId', 'seriesTitle', 'chapterId',
+        'chapterNumber', 'commentId', 'commentAuthorId', 'commentSnippet',
+        'reporterId', 'reporterName', 'reason', 'details', 'status',
+        'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.id)
+      && data.scope is string && data.scope.size() <= 20 && data.scope == 'moderation'
+      && data.targetType is string && data.targetType.size() <= 20 && data.targetType in ['comment', 'chapter']
+      && isValidId(data.seriesId)
+      && data.seriesTitle is string && data.seriesTitle.size() >= 1 && data.seriesTitle.size() <= 200
+      && data.chapterId is string && data.chapterId.size() <= 128
+      && data.chapterNumber is number && data.chapterNumber >= 0
+      && data.commentId is string && data.commentId.size() <= 128
+      && data.commentAuthorId is string && data.commentAuthorId.size() <= 128
+      && data.commentSnippet is string && data.commentSnippet.size() <= 500
+      && isValidId(data.reporterId)
+      && data.reporterName is string && data.reporterName.size() >= 1 && data.reporterName.size() <= 80
+      && data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 120
+      && data.details is string && data.details.size() <= 1000
+      && data.status is string && data.status.size() <= 20 && data.status in ['open', 'resolved', 'dismissed']
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    // =========================================================================
+    // COLLECTION MATCH RULES
+    // =========================================================================
+
+    match /series/{seriesId} {
+      allow get: if isValidId(seriesId) && (resource == null || existing().visibility == 'public');
+      allow list: if existing().visibility == 'public';
+
+      allow create: if isVerifiedUser()
+        && isValidId(seriesId)
+        && isValidSeries(incoming())
+        && incoming().id == seriesId
+        && incoming().createdBy == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isNotSanctioned();
+
+      allow update: if isVerifiedUser()
+        && isValidId(seriesId)
+        && isValidSeries(incoming())
+        && incoming().id == existing().id
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isStaff()
+          || (
+            existing().status != 'Completed'
+            && existing().createdBy == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'altTitles', 'synopsis', 'author', 'artist', 'coverUrl',
+              'status', 'type', 'releaseYear', 'genres', 'latestChapterNum',
+              'latestChapterTitle', 'chapterCount', 'isFeatured', 'updatedAt'
+            ])
+          )
+          || (
+            incoming().diff(existing()).affectedKeys().hasOnly(['views', 'updatedAt'])
+            && incoming().views == existing().views + 1
+          )
+          || (
+            isNotSanctioned()
+            && incoming().diff(existing()).affectedKeys().hasOnly(['ratingSum', 'ratingCount', 'ratingAvg', 'updatedAt'])
+            && existsAfter(/databases/$(database)/documents/series/$(seriesId)/ratings/$(request.auth.uid))
+          )
+        );
+
+      allow delete: if isAdmin() && isValidId(seriesId);
+
+      match /chapters/{chapterId} {
+        allow get: if isValidId(seriesId) && isValidId(chapterId) && (resource == null || existing().visibility == 'public');
+        allow list: if existing().visibility == 'public';
+
+        allow create: if isVerifiedUser()
+          && isValidId(seriesId)
+          && isValidId(chapterId)
+          && isValidChapter(incoming())
+          && incoming().id == chapterId
+          && incoming().seriesId == seriesId
+          && incoming().createdBy == request.auth.uid
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/series/$(seriesId))
+          && (isStaff() || get(/databases/$(database)/documents/series/$(seriesId)).data.createdBy == request.auth.uid);
+
+        allow update: if isVerifiedUser()
+          && isValidId(seriesId)
+          && isValidId(chapterId)
+          && isValidChapter(incoming())
+          && incoming().id == existing().id
+          && incoming().seriesId == existing().seriesId
+          && incoming().createdBy == existing().createdBy
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/series/$(seriesId))
+          && (
+            isStaff()
+            || (
+              existing().createdBy == request.auth.uid
+              && incoming().diff(existing()).affectedKeys().hasOnly(['chapterNumber', 'title', 'pageCount', 'updatedAt'])
+            )
+          );
+
+        allow delete: if isAdmin()
+          && isValidId(seriesId)
+          && isValidId(chapterId)
+          && exists(/databases/$(database)/documents/series/$(seriesId));
+
+        match /pages/{pageId} {
+          allow get: if isValidId(seriesId) && isValidId(chapterId) && isValidId(pageId) && (resource == null || existing().visibility == 'public');
+          allow list: if existing().visibility == 'public';
+
+          allow create: if isVerifiedUser()
+            && isValidId(seriesId)
+            && isValidId(chapterId)
+            && isValidId(pageId)
+            && isValidChapterPage(incoming())
+            && incoming().id == pageId
+            && incoming().seriesId == seriesId
+            && incoming().chapterId == chapterId
+            && incoming().createdBy == request.auth.uid
+            && incoming().createdAt == request.time
+            && exists(/databases/$(database)/documents/series/$(seriesId)/chapters/$(chapterId))
+            && (isStaff() || get(/databases/$(database)/documents/series/$(seriesId)).data.createdBy == request.auth.uid);
+
+          allow update: if isVerifiedUser()
+            && isValidId(seriesId)
+            && isValidId(chapterId)
+            && isValidId(pageId)
+            && isValidChapterPage(incoming())
+            && incoming().id == existing().id
+            && incoming().seriesId == existing().seriesId
+            && incoming().chapterId == existing().chapterId
+            && incoming().createdBy == existing().createdBy
+            && incoming().createdAt == existing().createdAt
+            && exists(/databases/$(database)/documents/series/$(seriesId)/chapters/$(chapterId))
+            && (
+              isStaff()
+              || (
+                existing().createdBy == request.auth.uid
+                && incoming().diff(existing()).affectedKeys().hasOnly(['pageNumber', 'imageUrl'])
+              )
+            );
+
+          allow delete: if isAdmin()
+            && isValidId(seriesId)
+            && isValidId(chapterId)
+            && isValidId(pageId);
+        }
+      }
+
+      match /ratings/{ratingUserId} {
+        allow get: if isValidId(seriesId) && isValidId(ratingUserId) && (resource == null || existing().visibility == 'public');
+        allow list: if existing().visibility == 'public';
+
+        allow create: if isVerifiedUser()
+          && isValidId(seriesId)
+          && isValidId(ratingUserId)
+          && request.auth.uid == ratingUserId
+          && isValidSeriesRating(incoming())
+          && incoming().seriesId == seriesId
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && isNotSanctioned()
+          && exists(/databases/$(database)/documents/series/$(seriesId))
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid)/history/$(seriesId))
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)/history/$(seriesId)).data.readChapterIds.size() >= 20;
+
+        allow update: if isVerifiedUser()
+          && isValidId(seriesId)
+          && isValidId(ratingUserId)
+          && request.auth.uid == ratingUserId
+          && isValidSeriesRating(incoming())
+          && incoming().userId == existing().userId
+          && incoming().seriesId == existing().seriesId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && isNotSanctioned()
+          && exists(/databases/$(database)/documents/series/$(seriesId))
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid)/history/$(seriesId))
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)/history/$(seriesId)).data.readChapterIds.size() >= 20
+          && (isAdmin() || incoming().diff(existing()).affectedKeys().hasOnly(['score', 'updatedAt']));
+
+        allow delete: if isVerifiedUser()
+          && isValidId(seriesId)
+          && isValidId(ratingUserId)
+          && (request.auth.uid == ratingUserId || isStaff());
+      }
+
+      match /subscribers/{subscriberId} {
+        allow get: if isSignedIn()
+          && isValidId(seriesId)
+          && isValidId(subscriberId)
+          && (request.auth.uid == subscriberId || isStaff());
+
+        allow list: if isVerifiedUser()
+          && existing().seriesId == seriesId;
+
+        allow create: if isVerifiedUser()
+          && isValidId(seriesId)
+          && isValidId(subscriberId)
+          && request.auth.uid == subscriberId
+          && isValidSeriesSubscriber(incoming())
+          && incoming().seriesId == seriesId
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/series/$(seriesId));
+
+        allow delete: if isVerifiedUser()
+          && isValidId(seriesId)
+          && isValidId(subscriberId)
+          && (request.auth.uid == subscriberId || isStaff());
+      }
+    }
+
+    match /comments/{commentId} {
+      allow get: if isValidId(commentId) && (resource == null || existing().visibility == 'public');
+      allow list: if existing().visibility == 'public';
+
+      allow create: if isVerifiedUser()
+        && isValidId(commentId)
+        && isValidComment(incoming())
+        && incoming().id == commentId
+        && incoming().authorId == request.auth.uid
+        && incoming().isEdited == false
+        && incoming().likesCount == 0
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isNotSanctioned()
+        && exists(/databases/$(database)/documents/series/$(incoming().seriesId));
+
+      allow update: if isVerifiedUser()
+        && isValidId(commentId)
+        && isValidComment(incoming())
+        && incoming().id == existing().id
+        && incoming().seriesId == existing().seriesId
+        && incoming().authorId == existing().authorId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isStaff()
+          || (
+            // Action: Author edit within strict 10-minute window
+            existing().authorId == request.auth.uid
+            && isNotSanctioned()
+            && request.time < existing().createdAt + duration.value(10, 'm')
+            && incoming().isEdited == true
+            && incoming().diff(existing()).affectedKeys().hasOnly(['content', 'imageUrl', 'isEdited', 'updatedAt'])
+          )
+          || (
+            // Action: Atomic Like / Unlike
+            isNotSanctioned()
+            && incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'updatedAt'])
+            && (
+              (
+                incoming().likesCount == existing().likesCount + 1
+                && existsAfter(/databases/$(database)/documents/comments/$(commentId)/likes/$(request.auth.uid))
+              )
+              || (
+                incoming().likesCount == existing().likesCount - 1
+                && !existsAfter(/databases/$(database)/documents/comments/$(commentId)/likes/$(request.auth.uid))
+              )
+            )
+          )
+        );
+
+      allow delete: if isVerifiedUser()
+        && isValidId(commentId)
+        && (existing().authorId == request.auth.uid || isStaff());
+
+      match /likes/{likeUserId} {
+        allow get: if isSignedIn() && isValidId(commentId) && isValidId(likeUserId) && request.auth.uid == likeUserId;
+        allow list: if isSignedIn() && existing().userId == request.auth.uid;
+
+        allow create: if isVerifiedUser()
+          && isValidId(commentId)
+          && isValidId(likeUserId)
+          && request.auth.uid == likeUserId
+          && isValidCommentLike(incoming())
+          && incoming().commentId == commentId
+          && incoming().createdAt == request.time
+          && isNotSanctioned()
+          && exists(/databases/$(database)/documents/comments/$(commentId));
+
+        allow delete: if isVerifiedUser()
+          && isValidId(commentId)
+          && isValidId(likeUserId)
+          && request.auth.uid == likeUserId;
+      }
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId)
+        && (resource == null || existing().visibility == 'public' || (isSignedIn() && (request.auth.uid == userId || isStaff())));
+
+      allow list: if existing().visibility == 'public';
+
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || incoming().diff(existing()).affectedKeys().hasOnly([
+            'visibility', 'displayName', 'username', 'photoURL', 'bannerUrl',
+            'bio', 'pronouns', 'location', 'favoriteGenres', 'readingModePref',
+            'chapterAlertsEnabled', 'showReadingStatsPublic', 'updatedAt'
+          ])
+        );
+
+      match /private/{docId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(docId) && (request.auth.uid == userId || isStaff());
+
+        allow create: if isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(docId)
+          && request.auth.uid == userId
+          && isValidUserPrivate(incoming())
+          && incoming().updatedAt == request.time;
+
+        allow update: if isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(docId)
+          && request.auth.uid == userId
+          && isValidUserPrivate(incoming())
+          && incoming().uid == existing().uid
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt']);
+      }
+
+      match /bookmarks/{seriesId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(seriesId) && (request.auth.uid == userId || isStaff());
+        allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
+
+        allow create: if isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(seriesId)
+          && request.auth.uid == userId
+          && isValidBookmark(incoming())
+          && incoming().seriesId == seriesId
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/series/$(seriesId));
+
+        allow update: if isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(seriesId)
+          && request.auth.uid == userId
+          && isValidBookmark(incoming())
+          && incoming().userId == existing().userId
+          && incoming().seriesId == existing().seriesId
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['seriesTitle', 'coverUrl', 'latestChapterNum', 'type']);
+
+        allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(seriesId) && request.auth.uid == userId;
+      }
+
+      match /history/{seriesId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(seriesId) && (request.auth.uid == userId || isStaff());
+        allow list: if isVerifiedUser() && existing().userId == userId;
+
+        allow create: if isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(seriesId)
+          && request.auth.uid == userId
+          && isValidReadingHistory(incoming())
+          && incoming().seriesId == seriesId
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/series/$(seriesId));
+
+        allow update: if isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(seriesId)
+          && request.auth.uid == userId
+          && isValidReadingHistory(incoming())
+          && incoming().userId == existing().userId
+          && incoming().seriesId == existing().seriesId
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'seriesTitle', 'coverUrl', 'lastChapterId', 'lastChapterNum',
+            'lastChapterTitle', 'lastPageIndex', 'readChapterIds', 'updatedAt'
+          ]);
+
+        allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(seriesId) && (request.auth.uid == userId || isStaff());
+      }
+
+      match /notifications/{notifId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(notifId) && request.auth.uid == userId;
+        allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
+
+        allow create: if isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(notifId)
+          && isValidNotification(incoming())
+          && incoming().id == notifId
+          && incoming().userId == userId
+          && incoming().senderId == request.auth.uid
+          && incoming().isRead == false
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/series/$(incoming().seriesId)/subscribers/$(userId))
+          && (isStaff() || get(/databases/$(database)/documents/series/$(incoming().seriesId)).data.createdBy == request.auth.uid);
+
+        allow update: if isVerifiedUser()
+          && isValidId(userId)
+          && isValidId(notifId)
+          && request.auth.uid == userId
+          && isValidNotification(incoming())
+          && incoming().id == existing().id
+          && incoming().userId == existing().userId
+          && incoming().seriesId == existing().seriesId
+          && incoming().chapterId == existing().chapterId
+          && incoming().senderId == existing().senderId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (isAdmin() || incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'updatedAt']));
+
+        allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(notifId) && (request.auth.uid == userId || isStaff());
+      }
+    }
+
+    match /staff/{emailId} {
+      allow get: if isVerifiedUser()
+        && isValidEmailId(emailId)
+        && (request.auth.token.email == emailId || isAdmin());
+
+      allow create: if isAdmin()
+        && isValidEmailId(emailId)
+        && isValidStaffMember(incoming())
+        && incoming().email == emailId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isAdmin()
+        && isValidEmailId(emailId)
+        && isValidStaffMember(incoming())
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'addedBy', 'addedByEmail', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidEmailId(emailId);
+    }
+
+    match /siteConfig/staffDirectory {
+      allow get: if isAdmin();
+
+      allow create: if isAdmin()
+        && isValidStaffDirectory(incoming())
+        && incoming().updatedAt == request.time;
+
+      allow update: if isAdmin()
+        && isValidStaffDirectory(incoming())
+        && incoming().id == existing().id
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['entries', 'updatedBy', 'updatedAt']);
+    }
+
+    match /siteConfig/settings {
+      allow get: if resource == null || existing().visibility == 'public';
+
+      allow create: if isAdmin()
+        && isValidSiteSettings(incoming())
+        && incoming().updatedAt == request.time;
+
+      allow update: if isAdmin()
+        && isValidSiteSettings(incoming())
+        && incoming().id == existing().id
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'siteName', 'siteTagline', 'logoUrl', 'announcementBanner',
+          'themePreset', 'bgCanvasHex', 'bgSurfaceHex', 'accentHex',
+          'textPrimaryHex', 'uiCopy', 'textReplacements', 'updatedBy', 'updatedAt'
+        ]);
+    }
+
+    match /userModeration/{targetUserId} {
+      allow get: if isSignedIn() && isValidId(targetUserId) && (resource == null || existing().visibility == 'public');
+      allow list: if isVerifiedUser() && existing().visibility == 'public';
+
+      allow create: if isStaff()
+        && isValidId(targetUserId)
+        && isValidUserModeration(incoming())
+        && incoming().userId == targetUserId
+        && incoming().updatedAt == request.time;
+
+      allow update: if isStaff()
+        && isValidId(targetUserId)
+        && isValidUserModeration(incoming())
+        && incoming().userId == existing().userId
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'status', 'reason', 'warningMessage', 'isPermanent',
+          'expiresAt', 'updatedBy', 'updatedAt'
+        ]);
+
+      allow delete: if isStaff() && isValidId(targetUserId);
+    }
+
+    match /reports/{reportId} {
+      allow get: if isStaff() && isValidId(reportId);
+      allow list: if isVerifiedUser() && existing().scope == 'moderation';
+
+      allow create: if isVerifiedUser()
+        && isValidId(reportId)
+        && isValidContentReport(incoming())
+        && incoming().id == reportId
+        && incoming().reporterId == request.auth.uid
+        && incoming().status == 'open'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isNotSanctioned();
+
+      allow update: if isStaff()
+        && isValidId(reportId)
+        && isValidContentReport(incoming())
+        && incoming().id == existing().id
+        && incoming().reporterId == existing().reporterId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+
+      allow delete: if isStaff() && isValidId(reportId);
+    }
+
+    match /test/{docId} {
+      allow get: if isValidId(docId);
+    }
+  }
+}

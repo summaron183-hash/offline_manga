@@ -1,0 +1,6 @@
+{
+  "name": "MGeko — Cloud & Offline Manga Reader PWA",
+  "description": "A hybrid cloud and local Progressive Web App manga, manhwa, and manhua reader featuring Firebase multi-device sync, community discussions, browser ZIP chapter publishing, and IndexedDB offline downloads.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

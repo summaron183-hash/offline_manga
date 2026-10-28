@@ -1,0 +1,416 @@
+{
+  "entities": {
+    "Series": {
+      "title": "Series",
+      "description": "Public manga, manhwa, or manhua series metadata.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "altTitles": { "type": "array" },
+        "synopsis": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "author": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "artist": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "coverUrl": { "type": "string", "minLength": 1, "maxLength": 650000 },
+        "status": { "type": "string", "enum": ["Ongoing", "Completed"] },
+        "type": { "type": "string", "enum": ["Manga", "Manhwa", "Manhua"] },
+        "releaseYear": { "type": "integer" },
+        "genres": { "type": "array" },
+        "views": { "type": "integer" },
+        "ratingSum": { "type": "number" },
+        "ratingCount": { "type": "integer" },
+        "ratingAvg": { "type": "number" },
+        "latestChapterNum": { "type": "number" },
+        "latestChapterTitle": { "type": "string", "maxLength": 200 },
+        "chapterCount": { "type": "integer" },
+        "isFeatured": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "visibility", "title", "altTitles", "synopsis", "author", "artist",
+        "coverUrl", "status", "type", "releaseYear", "genres", "views",
+        "ratingSum", "ratingCount", "ratingAvg", "latestChapterNum",
+        "latestChapterTitle", "chapterCount", "isFeatured", "createdBy",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "Chapter": {
+      "title": "Chapter",
+      "description": "Chapter metadata under a Series.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "seriesId": { "type": "string", "maxLength": 128 },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "chapterNumber": { "type": "number" },
+        "title": { "type": "string", "maxLength": 200 },
+        "pageCount": { "type": "integer" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "seriesId", "visibility", "chapterNumber", "title",
+        "pageCount", "createdBy", "createdAt", "updatedAt"
+      ]
+    },
+    "ChapterPage": {
+      "title": "ChapterPage",
+      "description": "Compressed WebP or CDN page under a Chapter.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "seriesId": { "type": "string", "maxLength": 128 },
+        "chapterId": { "type": "string", "maxLength": 128 },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "pageNumber": { "type": "integer" },
+        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 800000 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "seriesId", "chapterId", "visibility", "pageNumber",
+        "imageUrl", "createdBy", "createdAt"
+      ]
+    },
+    "SeriesRating": {
+      "title": "SeriesRating",
+      "description": "1-5 star rating requiring at least 20 read chapters.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "seriesId": { "type": "string", "maxLength": 128 },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "score": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "seriesId", "visibility", "score", "createdAt", "updatedAt"]
+    },
+    "SeriesSubscriber": {
+      "title": "SeriesSubscriber",
+      "description": "Bookmarked user subscription for chapter release alerts.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "seriesId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "seriesId", "createdAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Series or chapter comment supporting formatting, optional image, nested replies, and 10-min edit window.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "seriesId": { "type": "string", "maxLength": 128 },
+        "seriesTitle": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "chapterId": { "type": "string", "maxLength": 128 },
+        "parentId": { "type": "string", "maxLength": 128 },
+        "replyToName": { "type": "string", "maxLength": 80 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "authorPhoto": { "type": "string", "maxLength": 650000 },
+        "content": { "type": "string", "maxLength": 2000 },
+        "imageUrl": { "type": "string", "maxLength": 650000 },
+        "isEdited": { "type": "boolean" },
+        "likesCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "visibility", "seriesId", "seriesTitle", "chapterId", "parentId",
+        "authorId", "authorName", "authorPhoto", "content", "likesCount",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "CommentLike": {
+      "title": "CommentLike",
+      "description": "Per-user atomic comment like.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "commentId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "commentId", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public cloud user profile (zero PII).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "username": { "type": "string", "maxLength": 40 },
+        "photoURL": { "type": "string", "maxLength": 650000 },
+        "bannerUrl": { "type": "string", "maxLength": 650000 },
+        "bio": { "type": "string", "maxLength": 600 },
+        "pronouns": { "type": "string", "maxLength": 40 },
+        "location": { "type": "string", "maxLength": 80 },
+        "favoriteGenres": { "type": "array" },
+        "readingModePref": { "type": "string", "enum": ["webtoon", "single"] },
+        "chapterAlertsEnabled": { "type": "boolean" },
+        "showReadingStatsPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid", "visibility", "displayName", "photoURL", "createdAt", "updatedAt"
+      ]
+    },
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Isolated PII email record readable only by owner or staff.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 254 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "updatedAt"]
+    },
+    "Bookmark": {
+      "title": "Bookmark",
+      "description": "Cloud-synced series bookmark.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "seriesId": { "type": "string", "maxLength": 128 },
+        "seriesTitle": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "coverUrl": { "type": "string", "minLength": 1, "maxLength": 650000 },
+        "latestChapterNum": { "type": "number" },
+        "type": { "type": "string", "enum": ["Manga", "Manhwa", "Manhua"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId", "seriesId", "seriesTitle", "coverUrl",
+        "latestChapterNum", "type", "createdAt"
+      ]
+    },
+    "ReadingHistory": {
+      "title": "ReadingHistory",
+      "description": "Cloud-synced reading progress supporting chapter re-read resets.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "seriesId": { "type": "string", "maxLength": 128 },
+        "seriesTitle": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "coverUrl": { "type": "string", "minLength": 1, "maxLength": 650000 },
+        "lastChapterId": { "type": "string", "maxLength": 128 },
+        "lastChapterNum": { "type": "number" },
+        "lastChapterTitle": { "type": "string", "maxLength": 200 },
+        "lastPageIndex": { "type": "integer" },
+        "readChapterIds": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId", "seriesId", "seriesTitle", "coverUrl",
+        "lastChapterId", "lastChapterNum", "lastChapterTitle",
+        "lastPageIndex", "readChapterIds", "updatedAt"
+      ]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Automated chapter release notification.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "seriesId": { "type": "string", "maxLength": 128 },
+        "seriesTitle": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "chapterId": { "type": "string", "maxLength": 128 },
+        "chapterNumber": { "type": "number" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "isRead": { "type": "boolean" },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "userId", "seriesId", "seriesTitle", "chapterId",
+        "chapterNumber", "message", "isRead", "senderId", "createdAt", "updatedAt"
+      ]
+    },
+    "StaffMember": {
+      "title": "StaffMember",
+      "description": "Gmail-keyed staff role assignment (admin or moderator) managed exclusively by Admins.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "minLength": 5, "maxLength": 254 },
+        "role": { "type": "string", "enum": ["admin", "moderator"] },
+        "addedBy": { "type": "string", "maxLength": 128 },
+        "addedByEmail": { "type": "string", "maxLength": 254 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "addedBy", "addedByEmail", "createdAt", "updatedAt"]
+    },
+    "StaffDirectory": {
+      "title": "StaffDirectory",
+      "description": "Admin-only directory of Gmail staff assignments.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "enum": ["staffDirectory"] },
+        "entries": { "type": "array" },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "entries", "updatedBy", "updatedAt"]
+    },
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "Global site theme, brand name, logo, and full-site text overrides managed exclusively by Admins.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "enum": ["settings"] },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "siteName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "siteTagline": { "type": "string", "maxLength": 200 },
+        "logoUrl": { "type": "string", "maxLength": 650000 },
+        "announcementBanner": { "type": "string", "maxLength": 300 },
+        "themePreset": { "type": "string", "maxLength": 40 },
+        "bgCanvasHex": { "type": "string", "maxLength": 16 },
+        "bgSurfaceHex": { "type": "string", "maxLength": 16 },
+        "accentHex": { "type": "string", "maxLength": 16 },
+        "textPrimaryHex": { "type": "string", "maxLength": 16 },
+        "uiCopy": { "type": "object" },
+        "textReplacements": { "type": "array" },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "visibility", "siteName", "siteTagline", "logoUrl",
+        "announcementBanner", "themePreset", "bgCanvasHex", "bgSurfaceHex",
+        "accentHex", "textPrimaryHex", "uiCopy", "textReplacements",
+        "updatedBy", "updatedAt"
+      ]
+    },
+    "UserModeration": {
+      "title": "UserModeration",
+      "description": "Staff-issued warning, mute, suspension, or ban record for a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "status": { "type": "string", "enum": ["active", "warned", "muted", "suspended", "banned"] },
+        "reason": { "type": "string", "maxLength": 500 },
+        "warningMessage": { "type": "string", "maxLength": 500 },
+        "isPermanent": { "type": "boolean" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId", "visibility", "status", "reason", "warningMessage",
+        "isPermanent", "expiresAt", "updatedBy", "updatedAt"
+      ]
+    },
+    "ContentReport": {
+      "title": "ContentReport",
+      "description": "User-submitted report on a negative comment or missing/broken chapter pages.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "scope": { "type": "string", "enum": ["moderation"] },
+        "targetType": { "type": "string", "enum": ["comment", "chapter"] },
+        "seriesId": { "type": "string", "maxLength": 128 },
+        "seriesTitle": { "type": "string", "maxLength": 200 },
+        "chapterId": { "type": "string", "maxLength": 128 },
+        "chapterNumber": { "type": "number" },
+        "commentId": { "type": "string", "maxLength": 128 },
+        "commentAuthorId": { "type": "string", "maxLength": 128 },
+        "commentSnippet": { "type": "string", "maxLength": 500 },
+        "reporterId": { "type": "string", "maxLength": 128 },
+        "reporterName": { "type": "string", "maxLength": 80 },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "details": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["open", "resolved", "dismissed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "scope", "targetType", "seriesId", "seriesTitle", "chapterId",
+        "chapterNumber", "commentId", "commentAuthorId", "commentSnippet",
+        "reporterId", "reporterName", "reason", "details", "status",
+        "createdAt", "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/series/{seriesId}": {
+      "schema": { "$ref": "#/entities/Series" },
+      "description": "Public manga series catalog."
+    },
+    "/series/{seriesId}/chapters/{chapterId}": {
+      "schema": { "$ref": "#/entities/Chapter" },
+      "description": "Chapters belonging to a series."
+    },
+    "/series/{seriesId}/chapters/{chapterId}/pages/{pageId}": {
+      "schema": { "$ref": "#/entities/ChapterPage" },
+      "description": "Pages belonging to a chapter."
+    },
+    "/series/{seriesId}/ratings/{ratingUserId}": {
+      "schema": { "$ref": "#/entities/SeriesRating" },
+      "description": "User star ratings requiring >= 20 read chapters."
+    },
+    "/series/{seriesId}/subscribers/{subscriberId}": {
+      "schema": { "$ref": "#/entities/SeriesSubscriber" },
+      "description": "Users subscribed to series chapter alerts."
+    },
+    "/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/Comment" },
+      "description": "Global real-time series and chapter comments."
+    },
+    "/comments/{commentId}/likes/{likeUserId}": {
+      "schema": { "$ref": "#/entities/CommentLike" },
+      "description": "Per-user comment likes."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Public user profile."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivate" },
+      "description": "Isolated PII email info."
+    },
+    "/users/{userId}/bookmarks/{seriesId}": {
+      "schema": { "$ref": "#/entities/Bookmark" },
+      "description": "User cloud bookmarks."
+    },
+    "/users/{userId}/history/{seriesId}": {
+      "schema": { "$ref": "#/entities/ReadingHistory" },
+      "description": "User cloud reading history."
+    },
+    "/users/{userId}/notifications/{notifId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "User chapter release notifications."
+    },
+    "/staff/{emailId}": {
+      "schema": { "$ref": "#/entities/StaffMember" },
+      "description": "Gmail-keyed staff role assignment."
+    },
+    "/siteConfig/staffDirectory": {
+      "schema": { "$ref": "#/entities/StaffDirectory" },
+      "description": "Admin-only directory of Gmail staff assignments."
+    },
+    "/siteConfig/settings": {
+      "schema": { "$ref": "#/entities/SiteSettings" },
+      "description": "Global site theme, logo, name, and text overrides."
+    },
+    "/userModeration/{targetUserId}": {
+      "schema": { "$ref": "#/entities/UserModeration" },
+      "description": "Ban, suspension, mute, or warning status per user."
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/ContentReport" },
+      "description": "User-submitted comment and chapter issue reports."
+    }
+  }
+}

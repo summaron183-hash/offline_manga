@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  --site-canvas: #0B0E14;
+  --site-surface: #131822;
+  --site-accent: #3B82F6;
+  --site-text: #F1F5F9;
+}
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-blue-600: var(--site-accent);
+  --color-blue-500: var(--site-accent);
+  --color-blue-400: var(--site-accent);
+}
+
+@layer base {
+  html {
+    background-color: var(--site-canvas);
+    color: var(--site-text);
+    font-family: var(--font-sans);
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--site-canvas);
+    color: var(--site-text);
+    letter-spacing: 0.01em;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+}
+
+/* Dynamic Cloud Theme Binding for Canvas & Surface Tokens */
+.bg-\[\#0B0E14\] {
+  background-color: var(--site-canvas);
+}
+
+.bg-\[\#131822\] {
+  background-color: var(--site-surface);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle custom dark scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--site-canvas);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
